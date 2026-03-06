@@ -15,12 +15,12 @@ router.get("/", async (req, res) => {
         console.error("GET recipes error:", error);
         return res.status(400).json(error);
     }
-/*  */
+
     res.json(data);
 });
 
 router.post("/", async (req, res) => {
-    const { title } = req.body;
+    const { title } = req.body.title?.trim();
 
     if (!title || !title.trim()) {
         return res.status(400).json({ message: "Title is required" });
@@ -36,6 +36,7 @@ router.post("/", async (req, res) => {
         added_at: new Date().toISOString(),
         last_cooked_at: null,
         is_favorite: false,
+        is_safe_repeat: false,
         steps: [],
         user_id: req.user.sub
     };

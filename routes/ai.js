@@ -20,6 +20,74 @@ router.post("/suggest", async (req, res) => {
             return res.status(400).json({ message: "Query is required" });
         }
 
+        /* -------------------------
+           1. Ask AI for intent
+        --------------------------*/
+
+        const intentPrompt = `
+User said: "${query}"
+
+You are an assistant inside a personal recipe manager app.
+
+Determine the user's intent.
+
+Possible intents:
+
+1. suggest
+User wants meal ideas.
+
+Examples:
+"what should I cook"
+"something spicy"
+
+2. open_recipe
+User asked for a specific recipe.
+
+Examples:
+"paneer butter masala"
+"show dal makhani"
+"how to make kadhi chawal"
+"recipe for ramen"
+
+3. create_recipe
+User wants to add a new recipe.
+
+Examples:
+"add a recipe"
+"create new dish"
+"add a new recipe"
+
+4. explain_app
+User asked something unrelated.
+
+Respond ONLY in JSON format:
+
+{
+  "intent": "suggest" | "open_recipe" | "create_recipe" | "explain_app",
+  "recipeTitle": "optional"
+}
+`;
+
+        const aiResponse = await client.responses.create({
+            model: "openai/gpt-oss-20b",
+            input: intentPrompt
+        });
+
+        let intentResult;
+
+        try {
+            intentResult = JSON.parse(aiResponse.output_text);
+        } catch {
+            return res.json({
+                type: "message",
+                text: "Sorry, I didn't understand that."
+            });
+        }
+
+        /* -------------------------
+           2. Load user recipes
+        --------------------------*/
+
         const { data: recipes, error } = await supabase
             .from("recipes")
             .select("id, title, category, tags, cooking_time, last_cooked_at")
@@ -28,10 +96,6 @@ router.post("/suggest", async (req, res) => {
         if (error) {
             console.error("Recipe fetch error:", error);
             return res.status(500).json({ message: "Failed to load recipes" });
-        }
-
-        if (!recipes || recipes.length === 0) {
-            return res.json({ noMore: true, message: "No saved recipes found." });
         }
 
         const today = new Date().toISOString().split("T")[0];
@@ -50,58 +114,94 @@ router.post("/suggest", async (req, res) => {
             return true;
         });
 
-        if (filteredRecipes.length === 0) {
+        /* -------------------------
+           3. Handle intents
+        --------------------------*/
+
+        /* ---- Suggest dishes ---- */
+
+        if (intentResult.intent === "suggest") {
+
+            const shuffled = filteredRecipes.sort(() => 0.5 - Math.random());
+
+            const suggestions = shuffled.slice(0, 5).map(r => ({
+                id: r.id
+            }));
+
             return res.json({
-                noMore: true,
-                message: `No more matching dishes left for "${query}".`
+                type: "suggestions",
+                suggestions
             });
         }
 
-        const recipeList = filteredRecipes.map(r => `
-ID: ${r.id}
-Title: ${r.title}
-Category: ${r.category}
-Tags: ${r.tags?.join(", ")}
-Cooking Time: ${r.cooking_time ?? "Unknown"} mins
-        `).join("\n");
+        /* ---- Open recipe ---- */
 
-        const prompt = `
-User wants: "${query}"
+        if (intentResult.intent === "open_recipe") {
 
-Here are their saved recipes:
+            const title = (intentResult.recipeTitle || query).toLowerCase();
 
-${recipeList}
+            const found = recipes.find(r =>
+                r.title.toLowerCase().includes(title)
+            );
 
-Choose ONE matching recipe at random from the list.
-If multiple recipes match well, rotate fairly.
+            if (!found) {
+                return res.json({
+                    type: "message",
+                    text: `No recipe found for "${intentResult.recipeTitle || query}".`
+                });
+            }
 
-Respond ONLY in valid JSON format:
-{
-  "recipeId": "...",
-  "title": "...",
-  "description": "...",
-  "badge": "Quick" | "Healthy" | "Comfort" | "Spicy"
-}
-Do NOT include explanations.
-        `;
-
-        const response = await client.responses.create({
-            model: "openai/gpt-oss-20b",
-            input: prompt
-        });
-
-        let parsed;
-        try {
-            parsed = JSON.parse(response.output_text);
-        } catch {
-            console.error("AI returned invalid JSON:", response.output_text);
-            return res.json(null);
+            return res.json({
+                type: "open_recipe",
+                recipeId: found.id
+            });
         }
 
-        res.json(parsed);
+        /* ---- Create recipe ---- */
+
+        if (intentResult.intent === "create_recipe") {
+
+            const newRecipe = {
+                id: `rec_${Date.now()}`,
+                title: "New Recipe",
+                image: null,
+                category: "Uncategorized",
+                tags: [],
+                cooking_time: null,
+                added_at: new Date().toISOString(),
+                last_cooked_at: null,
+                is_favorite: false,
+                is_safe_repeat: false,
+                steps: [],
+                user_id: req.user.sub
+            };
+
+            const { data, error } = await supabase
+                .from("recipes")
+                .insert([newRecipe])
+                .select()
+                .single();
+
+            if (error) {
+                console.error(error);
+                return res.status(500).json({ message: "Failed to create recipe" });
+            }
+
+            return res.json({
+                type: "create_recipe",
+                recipeId: data.id
+            });
+        }
+
+        /* ---- Explain app ---- */
+
+        return res.json({
+            type: "message",
+            text: "You can ask me for meal ideas or manage your saved recipes."
+        });
 
     } catch (error) {
-        console.error("Groq error:", error);
+        console.error("AI route error:", error);
         res.status(500).json({ message: "AI failed" });
     }
 });
