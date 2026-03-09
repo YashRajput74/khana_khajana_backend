@@ -162,7 +162,6 @@ Respond ONLY in JSON format:
         if (intentResult.intent === "create_recipe") {
 
             const newRecipe = {
-                id: `rec_${Date.now()}`,
                 title: "New Recipe",
                 image: null,
                 category: "Uncategorized",
