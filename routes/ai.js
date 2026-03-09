@@ -2,7 +2,7 @@ import express from "express";
 import { OpenAI } from "openai";
 import supabase from "../supabaseClient.js";
 import { decodeUser } from "../middleware/auth.js";
-
+import { v4 as uuidv4 } from "uuid";
 const router = express.Router();
 
 const client = new OpenAI({
@@ -162,6 +162,7 @@ Respond ONLY in JSON format:
         if (intentResult.intent === "create_recipe") {
 
             const newRecipe = {
+                id: uuidv4(),
                 title: "New Recipe",
                 image: null,
                 category: "Uncategorized",
