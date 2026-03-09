@@ -177,13 +177,16 @@ Respond ONLY in JSON format:
 
             const { data, error } = await supabase
                 .from("recipes")
-                .insert([newRecipe])
+                .insert(newRecipe)
                 .select()
                 .single();
 
             if (error) {
-                console.error(error);
-                return res.status(500).json({ message: "Failed to create recipe" });
+                console.error("Recipe creation error:", error);
+                return res.status(500).json({
+                    message: "Failed to create recipe",
+                    error: error.message
+                });
             }
 
             return res.json({
