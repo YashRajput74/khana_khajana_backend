@@ -84,18 +84,19 @@ router.get("/", async (req, res) => {
 });
 
 router.post("/", async (req, res) => {
-    const title = req.body.title?.trim();
+    const { title, tags = [], image = null } = req.body;
+    const cleanTitle = title?.trim();
 
-    if (!title || !title.trim()) {
+    if (!cleanTitle) {
         return res.status(400).json({ message: "Title is required" });
     }
 
     const newRecipe = {
         id: `rec_${Date.now()}`,
-        title,
-        image: null,
+        title: cleanTitle,
+        image,
         category: "Uncategorized",
-        tags: [],
+        tags,
         cooking_time: null,
         added_at: new Date().toISOString(),
         last_cooked_at: null,

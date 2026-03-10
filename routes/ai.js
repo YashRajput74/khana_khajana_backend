@@ -132,7 +132,7 @@ Taste preferences: ${tastes.join(", ") || "any"}
 Existing recipes:
 ${filteredRecipes.map(r => `- ${r.id}: ${r.title}`).join("\n")}
 
-Suggest 5 dishes.
+Suggest 10 dishes.
 
 Rules:
 - Respect diet preference.
