@@ -14,7 +14,7 @@ router.use(decodeUser);
 
 router.post("/suggest", async (req, res) => {
     try {
-        const { query, excludedIds = [] } = req.body;
+        const { query, excludedIds = [], diet, cuisines = [], tastes = [] } = req.body;
 
         if (!query) {
             return res.status(400).json({ message: "Query is required" });
@@ -122,15 +122,55 @@ Respond ONLY in JSON format:
 
         if (intentResult.intent === "suggest") {
 
-            const shuffled = filteredRecipes.sort(() => 0.5 - Math.random());
+            const aiPrompt = `
+User query: "${query}"
 
-            const suggestions = shuffled.slice(0, 5).map(r => ({
-                id: r.id
-            }));
+User diet: ${diet || "any"}
+Preferred cuisines: ${cuisines.join(", ") || "any"}
+Taste preferences: ${tastes.join(", ") || "any"}
+
+Existing recipes:
+${filteredRecipes.map(r => `- ${r.id}: ${r.title}`).join("\n")}
+
+Suggest 5 dishes.
+
+Rules:
+- Respect diet preference.
+- Prefer cuisines and tastes if possible.
+- Include some existing recipes if relevant.
+- You may suggest NEW dishes not in the list.
+
+Return JSON only in this format:
+
+{
+  "suggestions": [
+    { "type": "existing", "id": "recipe_id" },
+    { "type": "new", "title": "Dish name", "tags": ["tag1","tag2"] }
+  ]
+}
+`;
+
+            const aiSuggest = await client.responses.create({
+                model: "openai/gpt-oss-20b",
+                input: aiPrompt
+            });
+
+            let parsed;
+
+            try {
+                parsed = JSON.parse(aiSuggest.output_text);
+            } catch {
+                parsed = {
+                    suggestions: filteredRecipes.slice(0, 5).map(r => ({
+                        type: "existing",
+                        id: r.id
+                    }))
+                };
+            }
 
             return res.json({
                 type: "suggestions",
-                suggestions
+                suggestions: parsed.suggestions
             });
         }
 
